@@ -6,7 +6,7 @@ const dotenv = require("dotenv");
 const auth = require("../Middleware/auth");
 const role = require("../Middleware/role");
 const User = require("../Models/UserSchema");
-const Product = require("../Models/Product");  // ← Your user-side Product model
+const Product = require("../Models/Product");
 const Order = require("../Models/Order");
 
 dotenv.config();
@@ -154,7 +154,6 @@ router.get("/products-summary", auth, role(["Admin"]), async (req, res) => {
     const zodiacWiseProducts = {};
 
     products.forEach((p) => {
-      // By Category
       if (p.Category) {
         if (!categoryWiseProducts[p.Category]) {
           categoryWiseProducts[p.Category] = {
@@ -167,7 +166,6 @@ router.get("/products-summary", auth, role(["Admin"]), async (req, res) => {
         categoryWiseProducts[p.Category].count++;
       }
 
-      // By Zodiac
       if (p.Zodiac) {
         if (!zodiacWiseProducts[p.Zodiac]) {
           zodiacWiseProducts[p.Zodiac] = {
@@ -210,7 +208,7 @@ router.get("/dashboard-stats", auth, role(["Admin"]), async (req, res) => {
     ] = await Promise.all([
       Product.countDocuments(),
       Order.countDocuments(),
-      Order.distinct("shippingAddress.email"),
+      Order.distinct("customerEmail"),
       Order.aggregate([
         { $match: { orderStatus: "Delivered" } },
         { $group: { _id: null, total: { $sum: "$totalAmount" } } },
@@ -250,7 +248,7 @@ router.get("/products", auth, role(["Admin"]), async (req, res) => {
   try {
     const {
       page = 1,
-      limit = 20,
+      limit = 10000,
       search,
       category,
       zodiac,
@@ -328,7 +326,7 @@ router.get("/product/:id", auth, role(["Admin"]), async (req, res) => {
   }
 });
 
-// ==================== CREATE PRODUCT ====================
+// ==================== CREATE PRODUCT (No Image Limits) ====================
 router.post("/product", auth, role(["Admin"]), async (req, res) => {
   try {
     const {
@@ -340,9 +338,10 @@ router.post("/product", auth, role(["Admin"]), async (req, res) => {
       Image,
       size,
       color,
+      stock,
+      isActive,
     } = req.body;
 
-    // Validate required fields
     if (!ProductName || !ProductPrice) {
       return res.status(400).json({
         success: false,
@@ -359,6 +358,8 @@ router.post("/product", auth, role(["Admin"]), async (req, res) => {
       Image: Image || "",
       size: size || "",
       color: color || "",
+      stock: parseInt(stock) || 0,
+      isActive: isActive !== undefined ? isActive === "true" || isActive === true : true,
     });
 
     await product.save();
@@ -377,16 +378,18 @@ router.post("/product", auth, role(["Admin"]), async (req, res) => {
   }
 });
 
-// ==================== UPDATE PRODUCT ====================
+// ==================== UPDATE PRODUCT (No Image Limits) ====================
 router.put("/product/:id", auth, role(["Admin"]), async (req, res) => {
   try {
     const productId = req.params.id;
     const updateData = { ...req.body };
 
-    // Parse numeric fields
     if (updateData.ProductPrice) updateData.ProductPrice = parseFloat(updateData.ProductPrice);
+    if (updateData.stock) updateData.stock = parseInt(updateData.stock);
+    if (updateData.isActive !== undefined) {
+      updateData.isActive = updateData.isActive === "true" || updateData.isActive === true;
+    }
 
-    // Remove undefined fields
     Object.keys(updateData).forEach(key => {
       if (updateData[key] === undefined) delete updateData[key];
     });
@@ -444,7 +447,6 @@ router.delete("/product/:id", auth, role(["Admin"]), async (req, res) => {
 });
 
 // ==================== TOGGLE PRODUCT STATUS ====================
-// Note: Your schema doesn't have isActive by default, so add it if needed
 router.patch("/product/:id/toggle-status", auth, role(["Admin"]), async (req, res) => {
   try {
     const product = await Product.findById(req.params.id);
@@ -456,7 +458,6 @@ router.patch("/product/:id/toggle-status", auth, role(["Admin"]), async (req, re
       });
     }
 
-    // If your schema has isActive field
     product.isActive = !product.isActive;
     await product.save();
 
@@ -494,6 +495,10 @@ router.patch("/products/bulk", auth, role(["Admin"]), async (req, res) => {
     }
 
     if (updateData.ProductPrice) updateData.ProductPrice = parseFloat(updateData.ProductPrice);
+    if (updateData.stock) updateData.stock = parseInt(updateData.stock);
+    if (updateData.isActive !== undefined) {
+      updateData.isActive = updateData.isActive === "true" || updateData.isActive === true;
+    }
 
     const result = await Product.updateMany(
       { _id: { $in: productIds } },

@@ -22,7 +22,8 @@ import {
   FaPlus, 
   FaSearch,
   FaImage,
-  FaUpload
+  FaUpload,
+  FaTimes
 } from "react-icons/fa";
 import Header from "../../component/header/header";
 import Sidebar from "../../component/sidebar/sidebar";
@@ -36,8 +37,8 @@ const Product = () => {
   const [showEditModal, setShowEditModal] = useState(false);
   const [showAddModal, setShowAddModal] = useState(false);
   const [editData, setEditData] = useState(null);
-  const [selectedImage, setSelectedImage] = useState(null);
-  const [imagePreview, setImagePreview] = useState("");
+  const [selectedImages, setSelectedImages] = useState([]);
+  const [imagePreviews, setImagePreviews] = useState([]);
   const [addData, setAddData] = useState({
     ProductName: "",
     ProductPrice: "",
@@ -135,14 +136,13 @@ const Product = () => {
     fetchProducts();
   }, [token]);
 
-  // ==================== GET UNIQUE CATEGORIES FROM PRODUCTS ====================
+  // ==================== GET UNIQUE CATEGORIES ====================
   const getUniqueCategories = () => {
     const cats = new Set();
     products.forEach(p => {
       const cat = p.Category || p.category;
       if (cat) cats.add(cat);
     });
-    // Add default categories if no products have categories
     if (cats.size === 0) {
       categories.forEach(cat => cats.add(cat));
     }
@@ -151,39 +151,94 @@ const Product = () => {
 
   const uniqueCategories = getUniqueCategories();
 
-  // ==================== HANDLE IMAGE UPLOAD ====================
-  const handleImageUpload = (e, isEdit = false) => {
-    const file = e.target.files[0];
-    if (!file) return;
+  // ==================== HANDLE MULTIPLE IMAGE UPLOAD ====================
+  const handleMultipleImageUpload = (e, isEdit = false) => {
+    const files = Array.from(e.target.files);
+    if (files.length === 0) return;
 
-    // Validate file type
+    // Validate each file
+    const validFiles = [];
     const allowedTypes = ['image/jpeg', 'image/png', 'image/gif', 'image/webp'];
-    if (!allowedTypes.includes(file.type)) {
-      setError("Please upload a valid image file (JPEG, PNG, GIF, WEBP)");
-      setTimeout(() => setError(""), 3000);
-      return;
-    }
+    const maxSize = 5 * 1024 * 1024; // 5MB
 
-    // Validate file size (max 5MB)
-    if (file.size > 5 * 1024 * 1024) {
-      setError("Image size should be less than 5MB");
-      setTimeout(() => setError(""), 3000);
-      return;
-    }
-
-    // Create preview
-    const reader = new FileReader();
-    reader.onloadend = () => {
-      const base64String = reader.result;
-      if (isEdit) {
-        setEditData({ ...editData, Image: base64String });
-        setImagePreview(base64String);
-      } else {
-        setAddData({ ...addData, Image: base64String });
-        setImagePreview(base64String);
+    for (const file of files) {
+      if (!allowedTypes.includes(file.type)) {
+        setError(`"${file.name}" is not a valid image type`);
+        setTimeout(() => setError(""), 3000);
+        continue;
       }
-    };
-    reader.readAsDataURL(file);
+      if (file.size > maxSize) {
+        setError(`"${file.name}" exceeds 5MB limit`);
+        setTimeout(() => setError(""), 3000);
+        continue;
+      }
+      validFiles.push(file);
+    }
+
+    if (validFiles.length === 0) return;
+
+    // Create previews
+    const previews = [];
+    const readers = validFiles.map((file, index) => {
+      return new Promise((resolve) => {
+        const reader = new FileReader();
+        reader.onloadend = () => {
+          previews[index] = reader.result;
+          resolve();
+        };
+        reader.readAsDataURL(file);
+      });
+    });
+
+    Promise.all(readers).then(() => {
+      if (isEdit) {
+        const currentImages = editData.images || [];
+        const newImages = validFiles.map(file => file);
+        setEditData({ 
+          ...editData, 
+          images: [...currentImages, ...newImages],
+          Image: [...currentImages, ...newImages].length > 0 ? previews[0] : ""
+        });
+        setImagePreviews([...imagePreviews, ...previews]);
+      } else {
+        const currentImages = addData.images || [];
+        const newImages = validFiles.map(file => file);
+        setAddData({ 
+          ...addData, 
+          images: [...currentImages, ...newImages],
+          Image: [...currentImages, ...newImages].length > 0 ? previews[0] : ""
+        });
+        setImagePreviews([...imagePreviews, ...previews]);
+      }
+      setSelectedImages([...selectedImages, ...validFiles]);
+    });
+  };
+
+  // ==================== REMOVE IMAGE ====================
+  const removeImage = (index, isEdit = false) => {
+    if (isEdit) {
+      const newImages = [...(editData.images || [])];
+      newImages.splice(index, 1);
+      const newPreviews = [...imagePreviews];
+      newPreviews.splice(index, 1);
+      setEditData({ 
+        ...editData, 
+        images: newImages,
+        Image: newImages.length > 0 ? newPreviews[0] : ""
+      });
+      setImagePreviews(newPreviews);
+    } else {
+      const newImages = [...(addData.images || [])];
+      newImages.splice(index, 1);
+      const newPreviews = [...imagePreviews];
+      newPreviews.splice(index, 1);
+      setAddData({ 
+        ...addData, 
+        images: newImages,
+        Image: newImages.length > 0 ? newPreviews[0] : ""
+      });
+      setImagePreviews(newPreviews);
+    }
   };
 
   // ==================== DELETE PRODUCT ====================
@@ -215,13 +270,22 @@ const Product = () => {
   // ==================== UPDATE PRODUCT ====================
   const handleUpdate = async () => {
     try {
+      // If there are new image files, upload them
+      let imageData = editData.Image || "";
+      
+      // For multiple images, we'll store as JSON string or use the first image
+      if (editData.images && editData.images.length > 0) {
+        // Store the first image as main Image
+        imageData = editData.Image || "";
+      }
+
       const productData = {
         ProductName: editData.ProductName,
         ProductPrice: parseFloat(editData.ProductPrice),
         Category: editData.Category || editData.category,
         Zodiac: editData.Zodiac || editData.sunSign,
         Description: editData.Description || editData.description || "",
-        Image: editData.Image || "",
+        Image: imageData,
         size: editData.size || "",
         color: editData.color || "",
         stock: parseInt(editData.stock) || 0,
@@ -243,7 +307,8 @@ const Product = () => {
       
       setSuccess("Product updated successfully!");
       setShowEditModal(false);
-      setImagePreview("");
+      setImagePreviews([]);
+      setSelectedImages([]);
       fetchProducts();
       setTimeout(() => setSuccess(""), 3000);
     } catch (err) {
@@ -255,13 +320,15 @@ const Product = () => {
   // ==================== ADD PRODUCT ====================
   const handleAdd = async () => {
     try {
+      let imageData = addData.Image || "";
+
       const productData = {
         ProductName: addData.ProductName,
         ProductPrice: parseFloat(addData.ProductPrice),
         Category: addData.Category,
         Zodiac: addData.Zodiac,
         Description: addData.Description || "",
-        Image: addData.Image || "",
+        Image: imageData,
         size: addData.size || "",
         color: addData.color || "",
         stock: parseInt(addData.stock) || 0,
@@ -286,7 +353,8 @@ const Product = () => {
       
       setSuccess("Product added successfully!");
       setShowAddModal(false);
-      setImagePreview("");
+      setImagePreviews([]);
+      setSelectedImages([]);
       setAddData({
         ProductName: "",
         ProductPrice: "",
@@ -454,7 +522,7 @@ const Product = () => {
               </Col>
             </Row>
 
-            {/* Search and Filters - WITH CATEGORY DROPDOWN */}
+            {/* Search and Filters */}
             <Row className="mb-3">
               <Col md={4}>
                 <div className="search-box">
@@ -570,7 +638,7 @@ const Product = () => {
                               className="me-1"
                               onClick={() => {
                                 setEditData(p);
-                                setImagePreview(p.Image || "");
+                                setImagePreviews(p.Image ? [p.Image] : []);
                                 setShowEditModal(true);
                               }}
                             >
@@ -699,37 +767,45 @@ const Product = () => {
               </Col>
               <Col md={6}>
                 <Form.Group className="mb-3">
-                  <Form.Label>Image</Form.Label>
+                  <Form.Label>Images</Form.Label>
                   <div className="image-upload-wrapper">
                     <Form.Control
                       type="file"
                       accept="image/*"
-                      onChange={(e) => handleImageUpload(e, false)}
+                      multiple
+                      onChange={(e) => handleMultipleImageUpload(e, false)}
                       className="image-upload-input"
                     />
                     <div className="image-upload-icon">
-                      <FaUpload /> Choose Image
+                      <FaUpload /> Choose Images (Multiple)
                     </div>
                   </div>
-                  {imagePreview && (
-                    <div className="image-preview mt-2">
-                      <img 
-                        src={imagePreview} 
-                        alt="Product preview" 
-                        className="img-fluid rounded"
-                        style={{ maxHeight: "100px", maxWidth: "100%" }}
-                      />
-                      <Button 
-                        variant="outline-danger" 
-                        size="sm" 
-                        className="mt-1"
-                        onClick={() => {
-                          setImagePreview("");
-                          setAddData({ ...addData, Image: "" });
-                        }}
-                      >
-                        Remove
-                      </Button>
+                  
+                  {/* Image Previews */}
+                  {imagePreviews.length > 0 && (
+                    <div className="image-preview-container mt-2">
+                      <div className="d-flex flex-wrap gap-2">
+                        {imagePreviews.map((preview, index) => (
+                          <div key={index} className="image-preview-item position-relative">
+                            <img 
+                              src={preview} 
+                              alt={`Preview ${index + 1}`} 
+                              className="img-fluid rounded"
+                              style={{ maxHeight: "80px", maxWidth: "80px", objectFit: "cover" }}
+                            />
+                            <Button 
+                              variant="danger" 
+                              size="sm" 
+                              className="position-absolute top-0 end-0 p-0 rounded-circle"
+                              style={{ width: "20px", height: "20px", fontSize: "10px", lineHeight: "20px" }}
+                              onClick={() => removeImage(index, false)}
+                            >
+                              <FaTimes />
+                            </Button>
+                          </div>
+                        ))}
+                      </div>
+                      <small className="text-muted">{imagePreviews.length} image(s) selected</small>
                     </div>
                   )}
                 </Form.Group>
@@ -760,7 +836,7 @@ const Product = () => {
         <Modal.Footer>
           <Button variant="secondary" onClick={() => {
             setShowAddModal(false);
-            setImagePreview("");
+            setImagePreviews([]);
           }}>
             Cancel
           </Button>
@@ -870,47 +946,62 @@ const Product = () => {
                 </Col>
                 <Col md={6}>
                   <Form.Group className="mb-3">
-                    <Form.Label>Image</Form.Label>
+                    <Form.Label>Images</Form.Label>
                     <div className="image-upload-wrapper">
                       <Form.Control
                         type="file"
                         accept="image/*"
-                        onChange={(e) => handleImageUpload(e, true)}
+                        multiple
+                        onChange={(e) => handleMultipleImageUpload(e, true)}
                         className="image-upload-input"
                       />
                       <div className="image-upload-icon">
-                        <FaUpload /> Change Image
+                        <FaUpload /> Add More Images
                       </div>
                     </div>
-                    {imagePreview && (
-                      <div className="image-preview mt-2">
-                        <img 
-                          src={imagePreview} 
-                          alt="Product preview" 
-                          className="img-fluid rounded"
-                          style={{ maxHeight: "100px", maxWidth: "100%" }}
-                        />
-                        <Button 
-                          variant="outline-danger" 
-                          size="sm" 
-                          className="mt-1"
-                          onClick={() => {
-                            setImagePreview("");
-                            setEditData({ ...editData, Image: "" });
-                          }}
-                        >
-                          Remove
-                        </Button>
+                    
+                    {/* Existing Image */}
+                    {editData.Image && imagePreviews.length === 0 && (
+                      <div className="image-preview-container mt-2">
+                        <div className="d-flex flex-wrap gap-2">
+                          <div className="image-preview-item">
+                            <img 
+                              src={editData.Image} 
+                              alt="Current product" 
+                              className="img-fluid rounded"
+                              style={{ maxHeight: "80px", maxWidth: "80px", objectFit: "cover" }}
+                            />
+                          </div>
+                        </div>
+                        <small className="text-muted">Current image</small>
                       </div>
                     )}
-                    {!imagePreview && editData.Image && (
-                      <div className="image-preview mt-2">
-                        <img 
-                          src={editData.Image} 
-                          alt="Current product" 
-                          className="img-fluid rounded"
-                          style={{ maxHeight: "100px", maxWidth: "100%" }}
-                        />
+                    
+                    {/* New Image Previews */}
+                    {imagePreviews.length > 0 && (
+                      <div className="image-preview-container mt-2">
+                        <div className="d-flex flex-wrap gap-2">
+                          {imagePreviews.map((preview, index) => (
+                            <div key={index} className="image-preview-item position-relative">
+                              <img 
+                                src={preview} 
+                                alt={`Preview ${index + 1}`} 
+                                className="img-fluid rounded"
+                                style={{ maxHeight: "80px", maxWidth: "80px", objectFit: "cover" }}
+                              />
+                              <Button 
+                                variant="danger" 
+                                size="sm" 
+                                className="position-absolute top-0 end-0 p-0 rounded-circle"
+                                style={{ width: "20px", height: "20px", fontSize: "10px", lineHeight: "20px" }}
+                                onClick={() => removeImage(index, true)}
+                              >
+                                <FaTimes />
+                              </Button>
+                            </div>
+                          ))}
+                        </div>
+                        <small className="text-muted">{imagePreviews.length} new image(s)</small>
                       </div>
                     )}
                   </Form.Group>
@@ -941,7 +1032,7 @@ const Product = () => {
         <Modal.Footer>
           <Button variant="secondary" onClick={() => {
             setShowEditModal(false);
-            setImagePreview("");
+            setImagePreviews([]);
           }}>
             Cancel
           </Button>

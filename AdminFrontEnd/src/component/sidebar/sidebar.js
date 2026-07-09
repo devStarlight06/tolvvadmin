@@ -76,9 +76,9 @@ const Sidebar = () => {
               <NavLink to="/dashboard" className="nav-link" onClick={handleClose}>
                 <FaTachometerAlt /> Dashboard
               </NavLink>
-              <NavLink to="/ProductCommission" className="nav-link" onClick={handleClose}>
+              {/* <NavLink to="/ProductCommission" className="nav-link" onClick={handleClose}>
                 <FaUsers /> Product Commission
-              </NavLink>
+              </NavLink> */}
               <NavLink to="/delivery" className="nav-link" onClick={handleClose}>
                 <FaWarehouse /> Delivery
               </NavLink>
