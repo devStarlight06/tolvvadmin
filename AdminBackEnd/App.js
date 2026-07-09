@@ -16,11 +16,11 @@ app.use("/images", express.static("D:/GourmentBazar/SuperAdmin/AdminFrontEnd/pub
 /* ===== ROUTES ===== */
 app.use("/api/admin", require("./Router/auth.routes"));
 app.use("/api/admin", require("./Router/admin.routers"));
-app.use("/api/admin", require("./Router/company.routes"));
+
 app.use("/api/admin", require("./Router/order.routes"));
 app.use("/api/admin", require("./Router/invoice"));
 app.use("/api/customers", require("./Router/customer.router"));
-app.use("/api/category", require("./Router/category"));
+
 app.use("/api/coupons", require("./Router/couponRoutes"));
 
 // ✅ THIS LINE WAS MISSING (VERY IMPORTANT)

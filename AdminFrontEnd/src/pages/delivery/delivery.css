@@ -1,63 +1,170 @@
-/* ===== DELIVERY CARDS ===== */
+/* src/pages/Delivery/delivery.css */
+
+.admin-layout {
+  display: flex;
+  min-height: 100vh;
+  background: #f4f6f9;
+}
+
+.admin-content {
+  flex: 1;
+  padding: 30px;
+  margin-left: 250px;
+  transition: margin-left 0.3s ease;
+}
+
+/* ===== STATS CARDS ===== */
 .delivery-card {
-  padding: 24px !important;
-  border-radius: 18px !important;
-  text-align: center;
-  border: none !important;
-  color: #fff;
-  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.15);
-  transition: transform 0.3s ease;
+  padding: 20px 25px;
+  border-radius: 15px;
+  border: none;
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
+  transition: all 0.3s ease;
+  background: #fff;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 15px;
 }
 
-/* Delivered */
-.delivery-card.delivered {
-  background: linear-gradient(135deg, #16a34a, #22c55e) !important;
+.delivery-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
 }
 
-/* Pending */
-.delivery-card.pending {
-  background: linear-gradient(135deg, #f59e0b, #fbbf24) !important;
-}
-
-/* Canceled */
-.delivery-card.canceled {
-  background: linear-gradient(135deg, #dc2626, #ef4444) !important;
-} 
-/* Icon */
 .delivery-card .icon {
-  font-size: 34px;
-  margin-bottom: 10px;
+  font-size: 32px;
+  width: 55px;
+  height: 55px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 12px;
 }
 
-/* Title */
 .delivery-card h6 {
-  margin-top: 8px;
-  font-size: 15px;
-  opacity: 0.9;
+  margin: 0;
+  font-size: 14px;
+  font-weight: 500;
+  color: #6c757d;
+  flex: 1;
 }
 
-/* Count */
 .delivery-card h3 {
-  font-size: 34px;
+  margin: 0;
+  font-size: 24px;
   font-weight: 700;
-  margin-top: 6px;
+  color: #1a1a2e;
+  min-width: 40px;
+  text-align: right;
+}
+
+/* Card Colors */
+.delivery-card.total .icon {
+  background: #e3f2fd;
+  color: #1976d2;
+}
+.delivery-card.total h3 {
+  color: #1976d2;
+}
+
+.delivery-card.delivered .icon {
+  background: #e8f5e9;
+  color: #2e7d32;
+}
+.delivery-card.delivered h3 {
+  color: #2e7d32;
+}
+
+.delivery-card.pending .icon {
+  background: #fff3e0;
+  color: #e65100;
+}
+.delivery-card.pending h3 {
+  color: #e65100;
+}
+
+.delivery-card.shipped .icon {
+  background: #e0f7fa;
+  color: #00838f;
+}
+.delivery-card.shipped h3 {
+  color: #00838f;
+}
+
+.delivery-card.canceled .icon {
+  background: #fbe9e7;
+  color: #c62828;
+}
+.delivery-card.canceled h3 {
+  color: #c62828;
 }
 
 /* ===== TABLE ===== */
 .table-wrapper {
-  background: #ffffff;
+  background: #fff;
+  border-radius: 15px;
   padding: 20px;
-  border-radius: 16px;
-  box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.06);
 }
 
-/* ===== MOBILE ===== */
+.table-wrapper table {
+  margin-bottom: 0;
+}
+
+.table-wrapper th {
+  font-weight: 600;
+  color: #495057;
+  border-bottom: 2px solid #dee2e6;
+  white-space: nowrap;
+}
+
+.table-wrapper td {
+  vertical-align: middle;
+}
+
+.table-wrapper .badge {
+  font-size: 12px;
+  padding: 6px 12px;
+  border-radius: 20px;
+  font-weight: 500;
+}
+
+/* ===== RESPONSIVE ===== */
+@media (max-width: 992px) {
+  .admin-content {
+    margin-left: 0;
+    padding: 20px 15px;
+  }
+  
+  .delivery-card {
+    padding: 15px;
+  }
+  
+  .delivery-card .icon {
+    width: 45px;
+    height: 45px;
+    font-size: 24px;
+  }
+  
+  .delivery-card h3 {
+    font-size: 20px;
+  }
+}
+
 @media (max-width: 576px) {
   .delivery-card {
-    padding: 18px !important;
+    flex-wrap: wrap;
+    justify-content: center;
+    text-align: center;
   }
-
+  
+  .delivery-card h6 {
+    flex: 0 0 100%;
+    text-align: center;
+  }
+  
   .delivery-card h3 {
-    font-size: 28px;
+    text-align: center;
   }
 }

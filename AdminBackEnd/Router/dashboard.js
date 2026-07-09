@@ -6,62 +6,6 @@ const auth = require("../Middleware/auth");
 const router = express.Router();
 
 /* ======================================================
-   ADMIN COMMISSION PER COMPANY
-====================================================== */
-router.get("/admin-commission-per-company", auth, async (req, res) => {
-  try {
-    const data = await Order.aggregate([
-      { $match: { orderStatus: "Delivered" } },
-      { $unwind: "$items" },
-
-      {
-        $lookup: {
-          from: "products",
-          localField: "items.productId",
-          foreignField: "_id",
-          as: "product",
-        },
-      },
-      { $unwind: "$product" },
-
-      {
-        $group: {
-          _id: "$product.company",
-          totalQty: { $sum: "$items.quantity" },
-          totalSales: {
-            $sum: { $multiply: ["$items.price", "$items.quantity"] },
-          },
-          adminCommission: {
-            $sum: {
-              $multiply: [
-                { $multiply: ["$items.price", "$items.quantity"] },
-                { $divide: [{ $ifNull: ["$product.commission_rate", 5] }, 100] },
-              ],
-            },
-          },
-        },
-      },
-
-      {
-        $project: {
-          _id: 0,
-          company: "$_id",
-          totalQty: 1,
-          totalSales: { $round: ["$totalSales", 2] },
-          adminCommission: { $round: ["$adminCommission", 2] },
-        },
-      },
-
-      { $sort: { adminCommission: -1 } },
-    ]);
-
-    res.json(data);
-  } catch (err) {
-    res.status(500).json({ message: err.message });
-  }
-});
-
-/* ======================================================
    DASHBOARD STATS
 ====================================================== */
 router.get("/stats", auth, async (req, res) => {
@@ -71,28 +15,15 @@ router.get("/stats", auth, async (req, res) => {
     const pendingOrders = await Order.countDocuments({ orderStatus: "Pending" });
     const cancelledOrders = await Order.countDocuments({ orderStatus: "Cancelled" });
 
-    const commissionAgg = await Order.aggregate([
+    // ✅ FIX: Use priceAtBuy instead of price
+    const salesAgg = await Order.aggregate([
       { $match: { orderStatus: "Delivered" } },
       { $unwind: "$items" },
       {
-        $lookup: {
-          from: "products",
-          localField: "items.productId",
-          foreignField: "_id",
-          as: "product",
-        },
-      },
-      { $unwind: "$product" },
-      {
         $group: {
           _id: null,
-          totalCommission: {
-            $sum: {
-              $multiply: [
-                { $multiply: ["$items.price", "$items.quantity"] },
-                { $divide: [{ $ifNull: ["$product.commission_rate", 5] }, 100] },
-              ],
-            },
+          totalSales: {
+            $sum: { $multiply: ["$items.priceAtBuy", "$items.quantity"] },
           },
         },
       },
@@ -103,44 +34,65 @@ router.get("/stats", auth, async (req, res) => {
       deliveredOrders,
       pendingOrders,
       cancelledOrders,
-      totalCommission: (commissionAgg[0]?.totalCommission || 0).toFixed(2),
+      totalSales: (salesAgg[0]?.totalSales || 0).toFixed(2),
     });
   } catch (err) {
+    console.error("Stats error:", err);
     res.status(500).json({ message: err.message });
   }
 });
 
 /* ======================================================
-   MONTHLY ADMIN COMMISSION (CHART)
+   TOTAL SALES
 ====================================================== */
-router.get("/admin-commission", auth, async (req, res) => {
+router.get("/total-sales", auth, async (req, res) => {
   try {
     const data = await Order.aggregate([
       { $match: { orderStatus: "Delivered" } },
       { $unwind: "$items" },
       {
-        $lookup: {
-          from: "products",
-          localField: "items.productId",
-          foreignField: "_id",
-          as: "product",
+        $group: {
+          _id: null,
+          totalSales: {
+            $sum: { $multiply: ["$items.priceAtBuy", "$items.quantity"] },
+          },
+          totalOrders: { $sum: 1 },
+          totalItems: { $sum: "$items.quantity" },
         },
       },
-      { $unwind: "$product" },
+    ]);
+
+    res.json({
+      success: true,
+      data: {
+        totalSales: (data[0]?.totalSales || 0).toFixed(2),
+        totalOrders: data[0]?.totalOrders || 0,
+        totalItems: data[0]?.totalItems || 0,
+      },
+    });
+  } catch (err) {
+    console.error("Total sales error:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+/* ======================================================
+   MONTHLY SALES (Chart)
+====================================================== */
+router.get("/monthly-sales", auth, async (req, res) => {
+  try {
+    const data = await Order.aggregate([
+      { $match: { orderStatus: "Delivered" } },
+      { $unwind: "$items" },
       {
         $group: {
-          _id: { month: { $month: "$createdAt" } },
-          totalCommission: {
-            $sum: {
-              $multiply: [
-                { $multiply: ["$items.price", "$items.quantity"] },
-                { $divide: [{ $ifNull: ["$product.commission_rate", 5] }, 100] },
-              ],
-            },
+          _id: { month: { $month: "$createdAt" }, year: { $year: "$createdAt" } },
+          totalSales: {
+            $sum: { $multiply: ["$items.priceAtBuy", "$items.quantity"] },
           },
         },
       },
-      { $sort: { "_id.month": 1 } },
+      { $sort: { "_id.year": 1, "_id.month": 1 } },
     ]);
 
     const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
@@ -148,18 +100,20 @@ router.get("/admin-commission", auth, async (req, res) => {
     res.json(
       data.map(d => ({
         month: months[d._id.month - 1],
-        totalCommission: d.totalCommission.toFixed(2),
+        year: d._id.year,
+        totalSales: d.totalSales.toFixed(2),
       }))
     );
   } catch (err) {
+    console.error("Monthly sales error:", err);
     res.status(500).json({ message: err.message });
   }
 });
 
 /* ======================================================
-   DAILY & MONTHLY INCOME
+   DAILY & MONTHLY SALES
 ====================================================== */
-router.get("/income-summary", auth, async (req, res) => {
+router.get("/sales-summary", auth, async (req, res) => {
   try {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
@@ -174,49 +128,39 @@ router.get("/income-summary", auth, async (req, res) => {
       { $match: { orderStatus: "Delivered" } },
       { $unwind: "$items" },
       {
-        $lookup: {
-          from: "products",
-          localField: "items.productId",
-          foreignField: "_id",
-          as: "product",
-        },
-      },
-      { $unwind: "$product" },
-      {
         $project: {
           createdAt: 1,
-          adminCommission: {
-            $multiply: [
-              { $multiply: ["$items.price", "$items.quantity"] },
-              { $divide: [{ $ifNull: ["$product.commission_rate", 5] }, 100] },
-            ],
-          },
+          itemTotal: { $multiply: ["$items.priceAtBuy", "$items.quantity"] },
         },
       },
     ]);
 
-    const dailyIncome = data
+    const dailySales = data
       .filter(d => d.createdAt >= startOfToday)
-      .reduce((s, d) => s + d.adminCommission, 0);
+      .reduce((s, d) => s + d.itemTotal, 0);
 
-    const monthlyIncome = data
+    const monthlySales = data
       .filter(d => d.createdAt >= startOfMonth)
-      .reduce((s, d) => s + d.adminCommission, 0);
+      .reduce((s, d) => s + d.itemTotal, 0);
 
     res.json({
-      dailyIncome: dailyIncome.toFixed(2),
-      monthlyIncome: monthlyIncome.toFixed(2),
+      dailySales: dailySales.toFixed(2),
+      monthlySales: monthlySales.toFixed(2),
     });
   } catch (err) {
+    console.error("Sales summary error:", err);
     res.status(500).json({ message: err.message });
   }
 });
-router.get("/product-wise-commission", auth, async (req, res) => {
+
+/* ======================================================
+   SALES BY COMPANY
+====================================================== */
+router.get("/sales-by-company", auth, async (req, res) => {
   try {
     const data = await Order.aggregate([
       { $match: { orderStatus: "Delivered" } },
       { $unwind: "$items" },
-
       {
         $lookup: {
           from: "products",
@@ -226,56 +170,170 @@ router.get("/product-wise-commission", auth, async (req, res) => {
         },
       },
       { $unwind: "$product" },
-
       {
         $group: {
-          _id: "$product._id",
-          name: { $first: "$product.name" },
-          company: { $first: "$product.company" },
+          _id: "$product.company",
           totalQty: { $sum: "$items.quantity" },
           totalSales: {
-            $sum: { $multiply: ["$items.price", "$items.quantity"] },
-          },
-          adminCommission: {
-            $sum: {
-              $multiply: [
-                { $multiply: ["$items.price", "$items.quantity"] },
-                {
-                  $divide: [
-                    { $ifNull: ["$product.commission_rate", 5] },
-                    100,
-                  ],
-                },
-              ],
-            },
+            $sum: { $multiply: ["$items.priceAtBuy", "$items.quantity"] },
           },
         },
       },
-
       {
         $project: {
           _id: 0,
-          name: 1,
-          company: 1,
+          company: "$_id",
           totalQty: 1,
           totalSales: { $round: ["$totalSales", 2] },
-          adminCommission: { $round: ["$adminCommission", 2] },
-          vendorEarning: {
-            $round: [
-              { $subtract: ["$totalSales", "$adminCommission"] },
-              2,
-            ],
-          },
         },
       },
-
       { $sort: { totalSales: -1 } },
     ]);
 
     res.json(data);
   } catch (err) {
-    console.error(err);
+    console.error("Sales by company error:", err);
     res.status(500).json({ message: err.message });
   }
 });
+
+/* ======================================================
+   PRODUCT WISE SALES
+====================================================== */
+router.get("/product-wise-sales", auth, async (req, res) => {
+  try {
+    const data = await Order.aggregate([
+      { $match: { orderStatus: "Delivered" } },
+      { $unwind: "$items" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "items.productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: "$product" },
+      {
+        $group: {
+          _id: "$product._id",
+          name: { $first: "$product.ProductName" }, // ✅ FIX: Use ProductName
+          company: { $first: "$product.company" },
+          category: { $first: "$product.Category" }, // ✅ FIX: Use Category
+          sunSign: { $first: "$product.Zodiac" }, // ✅ FIX: Use Zodiac
+          totalQty: { $sum: "$items.quantity" },
+          totalSales: {
+            $sum: { $multiply: ["$items.priceAtBuy", "$items.quantity"] },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          name: 1,
+          company: 1,
+          category: 1,
+          sunSign: 1,
+          totalQty: 1,
+          totalSales: { $round: ["$totalSales", 2] },
+        },
+      },
+      { $sort: { totalSales: -1 } },
+    ]);
+
+    res.json(data);
+  } catch (err) {
+    console.error("Product wise sales error:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+/* ======================================================
+   SALES BY SUN SIGN
+====================================================== */
+router.get("/sales-by-sunsign", auth, async (req, res) => {
+  try {
+    const data = await Order.aggregate([
+      { $match: { orderStatus: "Delivered" } },
+      { $unwind: "$items" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "items.productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: "$product" },
+      {
+        $group: {
+          _id: "$product.Zodiac", // ✅ FIX: Use Zodiac
+          totalQty: { $sum: "$items.quantity" },
+          totalSales: {
+            $sum: { $multiply: ["$items.priceAtBuy", "$items.quantity"] },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          sunSign: "$_id",
+          totalQty: 1,
+          totalSales: { $round: ["$totalSales", 2] },
+        },
+      },
+      { $sort: { totalSales: -1 } },
+    ]);
+
+    res.json(data);
+  } catch (err) {
+    console.error("Sales by sun sign error:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
+/* ======================================================
+   SALES BY CATEGORY
+====================================================== */
+router.get("/sales-by-category", auth, async (req, res) => {
+  try {
+    const data = await Order.aggregate([
+      { $match: { orderStatus: "Delivered" } },
+      { $unwind: "$items" },
+      {
+        $lookup: {
+          from: "products",
+          localField: "items.productId",
+          foreignField: "_id",
+          as: "product",
+        },
+      },
+      { $unwind: "$product" },
+      {
+        $group: {
+          _id: "$product.Category", // ✅ FIX: Use Category
+          totalQty: { $sum: "$items.quantity" },
+          totalSales: {
+            $sum: { $multiply: ["$items.priceAtBuy", "$items.quantity"] },
+          },
+        },
+      },
+      {
+        $project: {
+          _id: 0,
+          category: "$_id",
+          totalQty: 1,
+          totalSales: { $round: ["$totalSales", 2] },
+        },
+      },
+      { $sort: { totalSales: -1 } },
+    ]);
+
+    res.json(data);
+  } catch (err) {
+    console.error("Sales by category error:", err);
+    res.status(500).json({ message: err.message });
+  }
+});
+
 module.exports = router;

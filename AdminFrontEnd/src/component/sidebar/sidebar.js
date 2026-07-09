@@ -93,12 +93,12 @@ const Sidebar = () => {
                 <FaGift /> Coupons
               </NavLink>
 
-              <NavLink to="/categories" className="nav-link" onClick={handleClose}>
+              {/* <NavLink to="/categories" className="nav-link" onClick={handleClose}>
                 <FaList /> Companies
-              </NavLink>
-              <NavLink to="/admin-categories" className="nav-link" onClick={handleClose}>
+              </NavLink> */}
+              {/* <NavLink to="/admin-categories" className="nav-link" onClick={handleClose}>
                 <FaList /> Categories
-              </NavLink>
+              </NavLink> */}
               <NavLink to="/customer" className="nav-link" onClick={handleClose}>
                 <FaUsers /> Customers
               </NavLink>
